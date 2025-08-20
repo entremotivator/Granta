@@ -12,9 +12,43 @@ def check_subscription(username: str, consumer_secret: str):
     Check if user has an active subscription OR is admin.
     """
     try:
-        response = requests.get(API_URL, params={"consumer_secret": consumer_secret}, timeout=10)
+        # Try different authentication methods
+        
+        # Method 1: As query parameter (current approach)
+        response = requests.get(
+            API_URL, 
+            params={"consumer_secret": consumer_secret, "username": username}, 
+            timeout=10
+        )
+        
+        # If that fails, try Method 2: As Authorization header
+        if response.status_code == 401:
+            headers = {
+                "Authorization": f"Bearer {consumer_secret}",
+                "Content-Type": "application/json"
+            }
+            response = requests.get(
+                API_URL, 
+                headers=headers,
+                params={"username": username},
+                timeout=10
+            )
+        
+        # If that fails, try Method 3: As custom header
+        if response.status_code == 401:
+            headers = {
+                "X-Consumer-Secret": consumer_secret,
+                "Content-Type": "application/json"
+            }
+            response = requests.get(
+                API_URL, 
+                headers=headers,
+                params={"username": username},
+                timeout=10
+            )
+        
         if response.status_code != 200:
-            return False, f"API error: {response.text}"
+            return False, f"API error ({response.status_code}): {response.text}"
         
         data = response.json()
         if data.get("status") != "success":
@@ -39,6 +73,9 @@ def check_subscription(username: str, consumer_secret: str):
 def main():
     st.title("🔐 WooCommerce Subscription Login")
     
+    # Add debug mode toggle
+    debug_mode = st.sidebar.checkbox("Debug Mode", help="Show detailed API response info")
+    
     if "authenticated" not in st.session_state:
         st.session_state.authenticated = False
         st.session_state.user = None
@@ -55,6 +92,12 @@ def main():
             with st.spinner("Validating access..."):
                 valid, result = check_subscription(username, consumer_secret)
                 
+                if debug_mode:
+                    st.write("**Debug Info:**")
+                    st.write(f"Username: {username}")
+                    st.write(f"Consumer Secret: {'*' * len(consumer_secret) if consumer_secret else 'None'}")
+                    st.write(f"API URL: {API_URL}")
+                
                 if valid:
                     st.session_state.authenticated = True
                     st.session_state.user = username
@@ -67,6 +110,12 @@ def main():
                         st.success(f"✅ Welcome {username}, subscription active!")
                 else:
                     st.error(f"❌ Access denied: {result}")
+                    if debug_mode:
+                        st.write("**Troubleshooting Tips:**")
+                        st.write("1. Verify your Consumer Secret is correct")
+                        st.write("2. Check if the WordPress user has proper permissions")
+                        st.write("3. Ensure the WooCommerce Subscriptions plugin is active")
+                        st.write("4. Verify the custom endpoint is properly configured")
     
     else:
         st.success(f"Logged in as {st.session_state.user} ({st.session_state.role})")
